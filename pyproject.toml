@@ -8,6 +8,8 @@ authors = ["Anthony Naddeo <anthony@whylabs.ai>"]
 python = "3.8"
 ray = {extras = ["default"], version = "^1.6.0"}
 whylogs = "^0.6.7"
+pyarrow = "^5.0.0"
+fsspec = "^2021.10.0"
 
 [tool.poetry.dev-dependencies]
 autopep8 = "^1.5.7"
