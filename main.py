@@ -139,8 +139,18 @@ def main_test_parallel():
 
 
 if __name__ == "__main__":
-    # ray.init(object_store_memory=1000000000)
-    # main_test_serial()
-    # main_test_parallel()
-    # main_pipeline_iter()
+    ray.init()
+
+    # This is the control. It doesn't use ray
+    main_test_serial()
+
+    # This one uses ray via actors, sending one csv to each one/process
+    main_test_parallel()
+
+    # This one uses ray via functions, sending each function the data-frame-ified csv
+    # from the main process.
+    main_pipeline_iter()
+
+    # This one won't work on WSL
     main_pipeline_actor()
+
