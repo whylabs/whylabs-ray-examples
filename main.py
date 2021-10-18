@@ -1,18 +1,20 @@
+from whylogs.proto.messages_pb2 import DatasetProfileMessage
+from whylogs.core.datasetprofile import DatasetProfile
+from whylogs.app.writers import WhyLabsWriter
+from whylogs.app import Session
+from ray.data.impl.arrow_block import ArrowRow
+from ray.data.dataset_pipeline import DatasetPipeline
+import os
+import modin.pandas as pd
+import pandas
+from typing import List
+import time
 from functools import reduce
 from re import I
 from time import sleep
 import ray
-import time
-from typing import List
+ray.init()
 
-import pandas as pd
-import os
-from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data.impl.arrow_block import ArrowRow
-from whylogs.app import Session
-from whylogs.app.writers import WhyLabsWriter
-from whylogs.core.datasetprofile import DatasetProfile
-from whylogs.proto.messages_pb2 import DatasetProfileMessage
 
 os.environ["WHYLABS_DEFAULT_ORG_ID"] = "org-3543"
 data_files = ["data/data1.csv", "data/data2.csv", "data/data3.csv"]
@@ -59,16 +61,15 @@ class RemotePipelineActor:
                           pipeline="demo-pipeline", writers=[writer])
         logger = session.logger("")
         print('logging')
-        for df in self.pipeline.iter_batches(batch_size=1000, batch_format="pandas"):
+        for df in self.pipeline.iter_batches(batch_size=10000, batch_format="pandas"):
             logger.log_dataframe(df)
 
         return logger.profile.to_protobuf().SerializeToString(deterministic=True)
 
 
-
 @timer("ActorPipeline")
 def main_pipeline_actor():
-    pipelines = ray.data.read_csv(data_files).pipeline(parallelism=3).split(3)
+    pipelines = ray.data.read_csv(data_files).pipeline().split(8)
 
     actors = [RemotePipelineActor.remote(pipeline) for pipeline in pipelines]
     results = ray.get([actor.log_from_pipeline.remote() for actor in actors])
@@ -81,9 +82,30 @@ def main_pipeline_actor():
     merge_and_write_profiles(results, "actor-pipeline.bin")
 
 
+def aggregate_to_frame(df: pd.DataFrame) -> List[bytes]:
+    writer = WhyLabsWriter("", formats=[])
+    session = Session(project="demo-project",
+                      pipeline="demo-pipeline", writers=[writer])
+    logger = session.logger("")
+    # for df in pipe.iter_batches(batch_size=100, batch_format="pandas"):
+    logger.log_dataframe(df)
+
+    return logger.profile.to_protobuf().SerializeToString(deterministic=True)
+
+
+# Needed to tell modin the proper types of each column. It can't tell when it reads from csv.
+# pandas_csv = pandas.read_csv(data_files[0])
+@timer("Modin")
+def main_modin():
+    df = pd.read_csv("data/data1.csv")
+    df.groupby.grou
+    results = df.aggregate(aggregate_to_frame, axis=0)
+    print(results)
+
+
 @ray.remote
 def log_frame(df: pd.DataFrame) -> List[bytes]:
-    writer = WhyLabsWriter("", formats=[])
+    writer = WhyLabsWriter()
     session = Session(project="demo-project",
                       pipeline="demo-pipeline", writers=[writer])
     logger = session.logger("")
@@ -119,9 +141,7 @@ def run_parallel() -> List[str]:
 
 
 def merge_and_write_profiles(profiles: List[bytes], file_name: str):
-    profiles = list(
-        map(DatasetProfile.from_protobuf_string,  profiles))
-
+    profiles = map(DatasetProfile.from_protobuf_string,  profiles)
     profile = reduce(lambda acc, cur: acc.merge(cur),
                      profiles, DatasetProfile(""))
 
@@ -139,18 +159,19 @@ def main_test_parallel():
 
 
 if __name__ == "__main__":
-    ray.init()
 
     # This is the control. It doesn't use ray
-    main_test_serial()
+    # main_test_serial()
 
     # This one uses ray via actors, sending one csv to each one/process
-    main_test_parallel()
+    # main_test_parallel()
 
     # This one uses ray via functions, sending each function the data-frame-ified csv
     # from the main process.
     main_pipeline_iter()
 
     # This one won't work on WSL
-    main_pipeline_actor()
+    # main_pipeline_actor()
 
+    # This one uses modin as a pd replacement
+    # main_modin()
