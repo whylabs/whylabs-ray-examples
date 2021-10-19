@@ -50,8 +50,12 @@ def main_pipeline_iter():
 
 
 def merge_and_write_profiles(profiles: List[bytes], file_name: str):
-    profiles = map(lambda profile: DatasetProfile.parse_delimited_single(profile)[1],  profiles)
-    profile = reduce(lambda acc, cur: acc.merge(cur), profiles, DatasetProfile(""))
+    profiles = map(DatasetProfile.parse_delimited,  profiles)
+    flat_profiles = [item for sublist in profiles for item in sublist]
+    profile = reduce(
+        lambda acc, cur: acc.merge(cur),
+        flat_profiles,
+        DatasetProfile(""))
     profile.write_protobuf(file_name)
 
 
