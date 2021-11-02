@@ -77,7 +77,6 @@ class Logger:
     def log(self, df: pd.DataFrame):
         data = df.to_dict(orient='split')
         # Post request with data as the payload to your whylogs container
-        data.pop('index')
         request = {
             'datasetId': '123',
             'tags': {},
