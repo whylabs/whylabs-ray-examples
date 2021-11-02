@@ -7,10 +7,7 @@ from typing import List
 import pandas as pd
 import ray
 from ray import serve
-from ray.data.dataset_pipeline import DatasetPipeline
 from starlette.requests import Request
-from whylogs.app import Session
-from whylogs.app.writers import WhyLabsWriter
 from whylogs.core.datasetprofile import DatasetProfile
 
 ray.init()
@@ -20,25 +17,17 @@ batch_size = 1000
 
 
 @ray.remote
-def log_frame(df: pd.DataFrame) -> List[bytes]:
-    session = Session(
-        project="default-project",
-        pipeline="default-pipeline",
-        writers=[])
-    logger = session.logger("")
-    logger.log_dataframe(df)
-    return logger.profile.serialize_delimited()
+def log_frame(df: pd.DataFrame) -> DatasetProfile:
+    profile = DatasetProfile("")
+    profile.track_dataframe(df)
+    return profile
 
 
-def merge_profiles(profiles: List[bytes]) -> DatasetProfile:
-    profiles = map(
-        lambda profile: DatasetProfile.parse_delimited_single(profile)[1],
-        profiles)
-    profile = reduce(
+def merge_profiles(profiles: List[DatasetProfile]) -> DatasetProfile:
+    return reduce(
         lambda acc, cur: acc.merge(cur),
         profiles,
         DatasetProfile(""))
-    return profile
 
 
 @serve.deployment()
@@ -57,13 +46,11 @@ class Logger:
         self.profile = self.profile.merge(profile)
 
     def _log_pipeline(self, df: pd.DataFrame) -> List[bytes]:
-        pipeline = ray.data.from_pandas([df]).pipeline()
+        pipeline = ray.data.from_pandas([df]).window()
         pipelines = pipeline.iter_batches(
             batch_size=batch_size,
             batch_format="pandas")
-        serialized_profiles = [log_frame.remote(batch) for batch in pipelines]
-        results = ray.get(serialized_profiles)
-        return results
+        return ray.get([log_frame.remote(batch) for batch in pipelines])
 
     def log(self, df: pd.DataFrame):
         results = self._log_pipeline(df)

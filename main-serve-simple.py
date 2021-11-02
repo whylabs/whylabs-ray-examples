@@ -7,10 +7,7 @@ from typing import List
 import pandas as pd
 import ray
 from ray import serve
-from ray.data.dataset_pipeline import DatasetPipeline
 from starlette.requests import Request
-from whylogs.app import Session
-from whylogs.app.writers import WhyLabsWriter
 from whylogs.core.datasetprofile import DatasetProfile
 
 ray.init()
@@ -20,27 +17,9 @@ batch_size = 1000
 
 
 @ray.remote
-def log_frame(df: pd.DataFrame) -> List[bytes]:
-    session = Session(
-        project="default-project",
-        pipeline="default-pipeline",
-        writers=[])
-    logger = session.logger("")
-    logger.log_dataframe(df)
-    return logger.profile.serialize_delimited()
-
-
-def merge_profiles(profiles: List[bytes]) -> DatasetProfile:
-    """
-    Utility function that has we use to merge our many generated profiles into a single one.
-    """
-    profiles = map(
-        lambda profile: DatasetProfile.parse_delimited_single(profile)[1],
-        profiles)
-    profile = reduce(
-        lambda acc, cur: acc.merge(cur),
-        profiles,
-        DatasetProfile(""))
+def log_frame(df: pd.DataFrame) -> DatasetProfile:
+    profile = DatasetProfile("")
+    profile.track_dataframe(df)
     return profile
 
 
@@ -60,14 +39,8 @@ class Logger:
             profile = await self.profile_queue.get()
             self.profile = self.profile.merge(profile)
 
-    def _log_remote(self, df: pd.DataFrame) -> List[bytes]:
-        serialized_profile = log_frame.remote(df)
-        results = [ray.get(serialized_profile)]
-        return results
-
     def log(self, df: pd.DataFrame):
-        results = self._log_remote(df)
-        profile = merge_profiles(results)
+        profile = ray.get(log_frame.remote(df))
         asyncio.create_task(self.profile_queue.put(profile))
 
     async def __call__(self, request: Request):

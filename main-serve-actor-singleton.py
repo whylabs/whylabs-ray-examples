@@ -3,15 +3,11 @@ import io
 import time
 from functools import reduce
 from typing import List
-from numpy import single
 
 import pandas as pd
 import ray
 from ray import serve
-from ray.data.dataset_pipeline import DatasetPipeline
 from starlette.requests import Request
-from whylogs.app import Session
-from whylogs.app.writers import WhyLabsWriter
 from whylogs.core.datasetprofile import DatasetProfile
 
 ray.init()
@@ -21,14 +17,10 @@ batch_size = 1000
 
 
 @ray.remote
-def log_frame(df: pd.DataFrame) -> List[bytes]:
-    session = Session(
-        project="default-project",
-        pipeline="default-pipeline",
-        writers=[])
-    logger = session.logger("")
-    logger.log_dataframe(df)
-    return logger.profile.serialize_delimited()
+def log_frame(df: pd.DataFrame) -> DatasetProfile:
+    profile = DatasetProfile("")
+    profile.track_dataframe(df)
+    return profile
 
 
 def merge_profiles(profiles: List[bytes]) -> List[bytes]:
@@ -45,7 +37,7 @@ def merge_profiles(profiles: List[bytes]) -> List[bytes]:
     return profile.serialize_delimited()
 
 
-# TODO Is global singleton state like this an antipattern? 
+# TODO Is global singleton state like this an antipattern?
 # TODO Is there definitely only a single instance of this state ever?
 @ray.remote
 class SingletonProfile:

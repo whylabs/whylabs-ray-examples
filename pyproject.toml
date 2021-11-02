@@ -7,7 +7,7 @@ authors = ["Anthony Naddeo <anthony@whylabs.ai>"]
 [tool.poetry.dependencies]
 python = "3.8"
 ray = {extras = ["serve"], version = "^1.7.0"}
-whylogs = "^0.6.7"
+whylogs = "^0.6.11"
 pyarrow = "^5.0.0"
 fsspec = "^2021.10.0"
 modin = {extras = ["ray"], version = "^0.11.1"}
