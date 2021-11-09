@@ -1,8 +1,6 @@
 import asyncio
 import io
 import time
-from functools import reduce
-from typing import List
 
 import pandas as pd
 import ray
@@ -13,32 +11,10 @@ from whylogs.core.datasetprofile import DatasetProfile
 ray.init()
 serve.start()
 
-batch_size = 1000
-
-
-@ray.remote
-def log_frame(df: pd.DataFrame) -> DatasetProfile:
-    profile = DatasetProfile("")
-    profile.track_dataframe(df)
-    return profile
-
-
-def merge_profiles(profiles: List[bytes]) -> List[bytes]:
-    """
-    Utility function that has we use to merge our many generated profiles into a single one.
-    """
-    profiles = map(
-        lambda profile: DatasetProfile.parse_delimited_single(profile)[1],
-        profiles)
-    profile = reduce(
-        lambda acc, cur: acc.merge(cur),
-        profiles,
-        DatasetProfile(""))
-    return profile.serialize_delimited()
-
-
 # TODO Is global singleton state like this an antipattern?
 # TODO Is there definitely only a single instance of this state ever?
+
+
 @ray.remote
 class SingletonProfile:
     def __init__(self) -> None:
@@ -51,8 +27,7 @@ class SingletonProfile:
             profile = await self.profile_queue.get()
             self.profile = self.profile.merge(profile)
 
-    def enqueue_profile(self, ser_profile: bytes):
-        profile = DatasetProfile.parse_delimited_single(ser_profile)[1]
+    def enqueue_profile(self, profile: DatasetProfile):
         asyncio.create_task(self.profile_queue.put(profile))
 
     def get_summary(self):
@@ -64,17 +39,9 @@ singleton = SingletonProfile.remote()
 
 @serve.deployment()
 class Logger:
-    def __init__(self) -> None:
-        pass
-
-    def _log_remote(self, df: pd.DataFrame) -> List[bytes]:
-        serialized_profile = log_frame.remote(df)
-        results = [ray.get(serialized_profile)]
-        return results
-
     def log(self, df: pd.DataFrame):
-        results = self._log_remote(df)
-        profile = merge_profiles(results)
+        profile = DatasetProfile("")
+        profile.track_dataframe(df)
         ray.get(singleton.enqueue_profile.remote(profile))
 
     async def __call__(self, request: Request):
@@ -94,7 +61,7 @@ class MyModel:
         bytes = await request.body()
         csv_text = bytes.decode(encoding='UTF-8')
         df = pd. read_csv(io.StringIO(csv_text))
-        # log the data with whylogs asynchronously using the dedicated logging endpoint.
+        # log the data with whylogs asynchronously
         self.logger.log.remote(df)
         return self.predict(df)
 

@@ -1,6 +1,5 @@
 import time
 from functools import reduce
-from typing import List
 
 import pandas as pd
 import ray
@@ -30,19 +29,15 @@ def log_frame(df: pd.DataFrame) -> DatasetProfile:
 
 
 @timer("IterPipeline")
-def main_pipeline_iter():
+def main_pipeline_iter() -> DatasetProfile:
     pipeline = ray.data.read_csv(data_files).window()
     pipelines = pipeline.iter_batches(batch_size=1000, batch_format="pandas")
     results = ray.get([log_frame.remote(batch) for batch in pipelines])
-    merge_and_write_profiles(results, "iter-pipeline.bin")
-
-
-def merge_and_write_profiles(profiles: List[DatasetProfile], file_name: str):
     profile = reduce(
         lambda acc, cur: acc.merge(cur),
-        profiles,
+        results,
         DatasetProfile(""))
-    profile.write_protobuf(file_name)
+    return profile
 
 
 if __name__ == "__main__":
