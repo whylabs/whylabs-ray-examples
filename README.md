@@ -3,6 +3,7 @@
 # Running
 
 ```
+# Setup dependencies with
 poetry install
 poetry run python main.py
 
@@ -10,6 +11,12 @@ poetry run python main.py
 
 pip install -r requirements.txt
 python main.py
+
+# Then run the examples.
+poetry shell # if using poetry
+python main-pipelines.py
+python main-serve-pipeline.py
+python main-functions.py
 ```
 
 It has a few examples that show how whylogs might be integrated into a ray setup
