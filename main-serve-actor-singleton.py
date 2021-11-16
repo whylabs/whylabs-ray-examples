@@ -1,4 +1,3 @@
-import asyncio
 import io
 import time
 
@@ -11,24 +10,14 @@ from whylogs.core.datasetprofile import DatasetProfile
 ray.init()
 serve.start()
 
-# TODO Is global singleton state like this an antipattern?
-# TODO Is there definitely only a single instance of this state ever?
-
 
 @ray.remote
 class SingletonProfile:
     def __init__(self) -> None:
         self.profile = DatasetProfile("")
-        self.profile_queue = asyncio.Queue()
-        asyncio.create_task(self.read_profiles())
 
-    async def read_profiles(self):
-        while True:
-            profile = await self.profile_queue.get()
-            self.profile = self.profile.merge(profile)
-
-    def enqueue_profile(self, profile: DatasetProfile):
-        asyncio.create_task(self.profile_queue.put(profile))
+    def add_profile(self, profile: DatasetProfile):
+        self.profile = self.profile.merge(profile)
 
     def get_summary(self):
         return str(self.profile.to_summary())
@@ -42,7 +31,7 @@ class Logger:
     def log(self, df: pd.DataFrame):
         profile = DatasetProfile("")
         profile.track_dataframe(df)
-        ray.get(singleton.enqueue_profile.remote(profile))
+        ray.get(singleton.add_profile.remote(profile))
 
     async def __call__(self, request: Request):
         return ray.get(singleton.get_summary.remote())
