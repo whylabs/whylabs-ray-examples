@@ -8,23 +8,21 @@ import pandas as pd
 import ray
 from ray import serve
 from starlette.requests import Request
-from whylogs.core.datasetprofile import DatasetProfile
+from whylogs.core import DatasetProfile, DatasetProfileView
 
 ray.init()
 serve.start()
 
-batch_size = 1000
-
 
 @ray.remote
-def log_frame(df: pd.DataFrame) -> DatasetProfile:
-    profile = DatasetProfile("")
-    profile.track_dataframe(df)
+def log_frame(df: pd.DataFrame) -> DatasetProfileView:
+    profile = DatasetProfile()
+    profile.track(df)
     return profile
 
 
 # TODO Is global singleton state like this an antipattern? This actually fails at runtime with a pickle error, but is something like this possible?
-profile = DatasetProfile("")
+profile = DatasetProfile().view
 profile_queue = asyncio.Queue()
 
 
@@ -41,7 +39,7 @@ class Logger:
         asyncio.create_task(profile_queue.put(profile))
 
     async def __call__(self, request: Request):
-        return str(profile.to_summary())
+        return str(profile.to_pandas())
 
 
 @serve.deployment
