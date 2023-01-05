@@ -6,11 +6,13 @@ authors = ["Anthony Naddeo <anthony@whylabs.ai>"]
 
 [tool.poetry.dependencies]
 python = "3.8"
-ray = {version = "1.8.0", extras = ["serve"]}
-whylogs = "^0.6.11"
+ray = {extras = ["serve"], version = "^2.0.0"}
+whylogs = "1.1.1"
 pyarrow = "^6.0.0"
 pydantic = "^1.8.2"
 fastapi = "^0.70.0"
+pandas = "^1.5.0"
+tqdm = "^4.64.1"
 
 [tool.poetry.dev-dependencies]
 autopep8 = "^1.5.7"

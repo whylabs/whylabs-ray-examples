@@ -1,31 +1,16 @@
-import time
-from functools import reduce
-
 import pandas as pd
 import ray
-from whylogs.core.datasetprofile import DatasetProfile
+from whylogs.core import DatasetProfile, DatasetProfileView
 
-data_files = ["data/data1.csv", "data/data2.csv", "data/data3.csv"]
-data_files = ["data/short-data.csv"]
-
-
-def timer(name):
-    def wrapped(fn):
-        def timerfn():
-            print(f"========== {name} =============")
-            serial_start = time.time()
-            fn()
-            print(f"time {time.time() - serial_start} seconds")
-            print()
-        return timerfn
-    return wrapped
+from util import data_files, merge_profiles, timer
 
 
+# This test uses ray.remote to execute the logging on the ray cluster.
 @ray.remote
-def log_frame(df: pd.DataFrame) -> DatasetProfile:
-    profile = DatasetProfile("")
-    profile.track_dataframe(df)
-    return profile
+def log_frame(df: pd.DataFrame) -> DatasetProfileView:
+    profile = DatasetProfile()
+    profile.track(df)
+    return profile.view()
 
 
 @timer("IterPipeline")
@@ -33,11 +18,8 @@ def main_pipeline_iter() -> DatasetProfile:
     pipeline = ray.data.read_csv(data_files).window()
     pipelines = pipeline.iter_batches(batch_size=1000, batch_format="pandas")
     results = ray.get([log_frame.remote(batch) for batch in pipelines])
-    profile = reduce(
-        lambda acc, cur: acc.merge(cur),
-        results,
-        DatasetProfile(""))
-    return profile
+
+    return merge_profiles(results)
 
 
 if __name__ == "__main__":

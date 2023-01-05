@@ -8,32 +8,25 @@ import pandas as pd
 import ray
 from ray import serve
 from starlette.requests import Request
-from whylogs.core.datasetprofile import DatasetProfile
+from whylogs.core import DatasetProfile, DatasetProfileView
+
+from util import merge_profiles
 
 ray.init()
 serve.start()
 
-batch_size = 1000
-
 
 @ray.remote
-def log_frame(df: pd.DataFrame) -> DatasetProfile:
-    profile = DatasetProfile("")
-    profile.track_dataframe(df)
-    return profile
-
-
-def merge_profiles(profiles: List[DatasetProfile]) -> DatasetProfile:
-    return reduce(
-        lambda acc, cur: acc.merge(cur),
-        profiles,
-        DatasetProfile(""))
+def log_frame(df: pd.DataFrame) -> DatasetProfileView:
+    profile = DatasetProfile()
+    profile.track(df)
+    return profile.view()
 
 
 @serve.deployment()
 class Logger:
     def __init__(self) -> None:
-        self.profile = DatasetProfile("")
+        self.profile = DatasetProfile().view()
         self.profile_queue = asyncio.Queue()
         asyncio.create_task(self.read_profiles())
 
@@ -48,7 +41,7 @@ class Logger:
     def _log_pipeline(self, df: pd.DataFrame) -> List[bytes]:
         pipeline = ray.data.from_pandas([df]).window()
         pipelines = pipeline.iter_batches(
-            batch_size=batch_size,
+            batch_size=10_000,
             batch_format="pandas")
         return ray.get([log_frame.remote(batch) for batch in pipelines])
 
@@ -58,7 +51,12 @@ class Logger:
         asyncio.create_task(self.profile_queue.put(profile))
 
     async def __call__(self, request: Request):
-        return str(self.profile.to_summary())
+        try:
+            # TODO remove after bug is fixed
+            # TODO jamie why are there so many NaNs in the min/max cols.
+            return str(self.profile.to_pandas())
+        except:
+            return []
 
 
 @serve.deployment
@@ -67,7 +65,7 @@ class MyModel:
         self.logger = Logger.get_handle(sync=True)
 
     def predict(self, df: pd.DataFrame):
-        # TODO implement with a real model
+        # implement with a real model
         return []
 
     async def __call__(self, request: Request):
